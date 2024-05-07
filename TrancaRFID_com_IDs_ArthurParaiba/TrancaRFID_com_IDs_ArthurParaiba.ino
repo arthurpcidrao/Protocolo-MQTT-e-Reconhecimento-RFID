@@ -6,7 +6,7 @@
 
 // Definição do id que sera liberado o acesso
 
-#define ID "33 A1 BA 0E"
+#define ID "33 A1 BA 0E"  // exemplo
 
 #define LedVerde 32
 #define LedVermelho 25
@@ -20,10 +20,73 @@ LiquidCrystal_I2C lcd(0x27, 16, 2); // define informacoes do lcd como o endereç
 
 
 
-String identifier[10];
+class ArrayList {
 
-void setup()
-{
+  private:
+    char vetor[10][15]; // vetor de 10 unidades e, em cada unidade, tem 15 espaços 'char' para ocupar
+    int tamanho;
+
+  public:
+
+    // Construtor
+    ArrayList(){
+      tamanho = 0;
+    }
+
+    void add(const char* elemento){
+      if (tamanho < 10){
+        strcpy(vetor[tamanho], elemento);
+        tamanho++;
+        Serial.print("id cadastrado: ");
+        Serial.println(elemento);
+      }
+      else{
+        Serial.println("memória cheia!");
+      }
+    }
+
+    int size(){
+      return tamanho;
+    }
+
+    bool remove(const char* elemento){
+      int pos = -1;
+      for (int i = 0; i < tamanho; i++){
+        if (strcmp(vetor[i], elemento) == 0){
+          pos = i;
+          break;
+        }
+      }
+
+      if (pos != -1){
+        remove(pos);
+        return true;
+      }
+
+      return false;
+    }
+
+    void remove(int pos){
+      for (int i = pos; i < tamanho -1; i++){
+        strcpy(vetor[i], vetor[i+1]);
+      }
+      tamanho--;
+    }
+
+    char* getId(int i){
+      if (i >= 0 && i < tamanho){
+        return vetor[i];
+      }
+      return "";
+    }
+
+};
+
+
+ArrayList cadastroId;
+
+
+void setup() {
   SPI.begin();   // inicia a comunicacao SPI que sera usada para comunicacao com o mudulo RFID
 
   lcd.init();   // inicia o lcd
@@ -42,10 +105,12 @@ void setup()
   pinMode(tranca, OUTPUT);
   pinMode(buzzer, OUTPUT);
 
-  identifier[0] = ID;
+  cadastroId.add(ID);
 }
 
-int contadorId = 1;
+
+
+
 
 void loop() {
 
@@ -58,9 +123,7 @@ void loop() {
     String string = "";
     string = Serial.readString();
     string.trim();
-    identifier[contadorId] = string;
-    Serial.println("id cadastrado: "string);
-    contadorId++;
+    cadastroId.add(string.c_str());
   }
 
 
@@ -82,60 +145,56 @@ void loop() {
      Serial.print(mfrc522.uid.uidByte[i], HEX);
      conteudo.concat(String(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " "));
      conteudo.concat(String(mfrc522.uid.uidByte[i], HEX));
-}
-Serial.println();
+  }
+  Serial.println();
   conteudo.toUpperCase();                      // deixa as letras da string todas maiusculas
 
-  int count = 0;
-  for(int i = 0; i < 10; i++){
-    if (conteudo.substring(1) == identifier[i]){ // verifica se o ID do cartao lido tem o mesmo ID do cartao que queremos liberar o acesso
+  bool liberado = false;
 
-        digitalWrite(LedVerde, HIGH);            // ligamos o led verde
-        lcd.clear();                             // limpamos oque havia sido escrito no lcd
-        lcd.print("Acesso Liberado");            // informamos pelo lcd que a tranca foi aberta
+  for(int i = 0; i < cadastroId.size(); i++){
 
-        digitalWrite(tranca, HIGH);              //abrimos a tranca por 5 segundos
+    if (strcmp(conteudo.substring(1).c_str(), cadastroId.getId(i)) == 0){ // verifica se o ID do cartao lido tem o mesmo ID do cartao que queremos liberar o acesso
 
-        for(byte s = 5; s > 0; s--){             //vai informando ao usuario quantos segundos faltao para a tranca ser fechada
-          lcd.setCursor(8,1);
-          lcd.print(s);
-          delay(1000);
-        }
+      digitalWrite(LedVerde, HIGH);            // ligamos o led verde
+      lcd.clear();                             // limpamos oque havia sido escrito no lcd
+      lcd.print("Acesso Liberado");            // informamos pelo lcd que a tranca foi aberta
 
-        digitalWrite(tranca, LOW);               // fecha a tranca
-        digitalWrite(LedVerde, LOW);             // e desliga o led
-        lcd.clear();                           // limpa os caracteres q estao escritos no lcd
+      digitalWrite(tranca, HIGH);              //abrimos a tranca por 5 segundos
 
-        count = 0;
-        break;
-
-    }else{                                       // caso o cartao lido nao foi registrado
-
-      count++;
+      for(byte s = 5; s > 0; s--){             //vai informando ao usuario quantos segundos faltao para a tranca ser fechada
+        lcd.setCursor(8,1);
+        lcd.print(s);
+        delay(1000);
       }
+
+      digitalWrite(tranca, LOW);               // fecha a tranca
+      digitalWrite(LedVerde, LOW);             // e desliga o led
+      lcd.clear();                           // limpa os caracteres q estao escritos no lcd
+
+      liberado = true;
+      break;
+    }
   }
 
-  if (count > 0){
+  if (!liberado){
     digitalWrite(LedVermelho, HIGH);           // vamos ligar o led vermelho
 
-        for(byte s = 5; s > 0; s--){               // uma contagem / espera para poder fazer uma nova leitura
+      for(byte s = 5; s > 0; s--){               // uma contagem / espera para poder fazer uma nova leitura
 
-            lcd.clear();                           // limpa as informacoes que estao na tela
-            lcd.home();                            // nota na posicao inicial
-            lcd.print("Acesso negado");            // infoma ao usuario que ele nao tem acesso
-            lcd.setCursor(8,1);                    // coloca o cursor na coluna 8 da linha 2
-            lcd.print(s);                          // informa quantos segundos faltam para pode fazer uma nova leitura
+        lcd.clear();                           // limpa as informacoes que estao na tela
+        lcd.home();                            // nota na posicao inicial
+        lcd.print("Acesso negado");            // infoma ao usuario que ele nao tem acesso
+        lcd.setCursor(8,1);                    // coloca o cursor na coluna 8 da linha 2
+        lcd.print(s);                          // informa quantos segundos faltam para pode fazer uma nova leitura
 
-            // faz o buzzer emitir um bip por segundo
-              delay(800);
-              digitalWrite(buzzer, HIGH);
-              delay(200);
-              digitalWrite(buzzer, LOW);
-          }
-            digitalWrite(LedVermelho, LOW);         // desliga o led vermelho
-            lcd.clear();                            // limpa as informacoes do lcd
+        // faz o buzzer emitir um bip por segundo
+          delay(800);
+          digitalWrite(buzzer, HIGH);
+          delay(200);
+          digitalWrite(buzzer, LOW);
+      }
+          digitalWrite(LedVermelho, LOW);         // desliga o led vermelho
+          lcd.clear();                            // limpa as informacoes do lcd
   }
-    
-    
  // recomeça
 }
