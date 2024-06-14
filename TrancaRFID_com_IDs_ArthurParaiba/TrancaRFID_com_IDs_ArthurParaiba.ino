@@ -4,26 +4,46 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 
+#include <WiFi.h>
+#include <PubSubClient.h>
+
+#include <Preferences.h>
+
 // Definição do id que sera liberado o acesso
 
 #define ID "33 A1 BA 0E"  // exemplo
 
-#define LedVerde 32
-#define LedVermelho 25
-#define tranca 33
-#define buzzer 4
-#define SS_PIN 5
-#define RST_PIN 15
+#define LedVerde            32
+#define LedVermelho         25
+#define tranca              33
+#define buzzer               4
+#define SS_PIN               5
+#define RST_PIN             15
+#define MSG_BUFFER_SIZE     50
+
+#define MAX_STRING          10
+
+Preferences preferences;
 
 MFRC522 mfrc522(SS_PIN, RST_PIN);   // define os pinos de controle do modulo de leitura de cartoes RFID
 LiquidCrystal_I2C lcd(0x27, 16, 2); // define informacoes do lcd como o endereço I2C (0x27) e tamanho do mesmo
+
+//BROKER MQTT
+const char* mqtt_server = "test.mosquitto.org"; //servidor mqtt
+WiFiClient espClient;
+PubSubClient client(espClient);    
+char msg[MSG_BUFFER_SIZE];
+
+// wifi e senha da rede local
+const char* ssid = "Cidrao family2g";  //motorola one vision_6109
+const char* password = "07021970";  //12345678
 
 
 
 class ArrayList {
 
   private:
-    char vetor[10][15]; // vetor de 10 unidades e, em cada unidade, tem 15 espaços 'char' para ocupar
+    char vetor[10][10]; // vetor de 10 unidades e, em cada unidade, tem 10 espaços 'char' para ocupar
     int tamanho;
 
   public:
@@ -43,6 +63,15 @@ class ArrayList {
       else{
         Serial.println("memória cheia!");
       }
+
+      preferences.begin("rfid", false);
+
+      for(int i = 0; i < MAX_STRING; i++) {
+        String key = "str" + String(i);
+        preferences.putString(key.c_str(), elemento);
+      }
+
+      preferences.end();
     }
 
     int size(){
@@ -86,7 +115,48 @@ class ArrayList {
 ArrayList cadastroId;
 
 
+void conectarBroker() {         
+  client.setServer(mqtt_server, 1883);
+  client.setCallback(callback);
+  Serial.print("Conectando ao servidor MQTT...");
+  if (!client.connected()) {
+    Serial.print(".");
+    String clientId = "";
+    clientId += String(random(0xffff), HEX);
+    if (client.connect(clientId.c_str())) {
+      Serial.println("Conectado");
+      client.subscribe("estacionamento/btn_entra");
+      client.subscribe("estacionamento/btn_saida");
+      client.subscribe("estacionamento/btn_emergencia");
+    }
+  }
+}
+
+
+void reconectarBroker() {
+  if (!client.connected()) {
+    conectarBroker();
+  }
+  client.loop();
+}
+
+void callback(char* topic, byte* payload, unsigned int lenght) {
+
+}
+
+
+
+
 void setup() {
+
+  Serial.print("Conectando-se ao Wi-Fi");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(100);
+    Serial.print(".");
+  }
+  Serial.println(" Conectado!");
+
   SPI.begin();   // inicia a comunicacao SPI que sera usada para comunicacao com o mudulo RFID
 
   lcd.init();   // inicia o lcd
@@ -106,13 +176,15 @@ void setup() {
   pinMode(buzzer, OUTPUT);
 
   cadastroId.add(ID);
+
+  conectarBroker();
+
 }
 
 
-
-
-
 void loop() {
+
+  reconectarBroker();
 
   lcd.home();                // bota o cursor do lcd na posicao inicial
   lcd.print("Aguardando");   // imprime na primeira linha a string "Aguardando"
@@ -178,6 +250,10 @@ void loop() {
 
   if (!liberado){
     digitalWrite(LedVermelho, HIGH);           // vamos ligar o led vermelho
+
+    sprintf(msg, "%s", conteudo.substring(1));
+    client.publish("/estacionamento/IDcadastrados", msg);
+
 
       for(byte s = 5; s > 0; s--){               // uma contagem / espera para poder fazer uma nova leitura
 

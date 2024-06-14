@@ -13,25 +13,20 @@
 
 LiquidCrystal_I2C lcd(I2C_ADDR, LCD_COLUMNS, LCD_LINES);
 
-#define PIN_ECHO_R          12
-#define PIN_TRIG_R          13
-#define LEDG_RIGHT          27
-#define LEDR_RIGHT          26
-#define PIN_ECHO_L          32
-#define PIN_TRIG_L          33
-#define LEDG_LEFT           14
-#define LEDR_LEFT           25
-#define IN_SERVO            18
-#define OUT_SERVO           15
+#define LIGHT_SENSOR_L      34 // ok
+#define LIGHT_SENSOR_R      35 // ok
+#define LEDG_RIGHT          27 // ok
+#define LEDR_RIGHT          26 // ok
+#define LEDG_LEFT           14 // ok
+#define LEDR_LEFT           25 // ok
+#define IN_SERVO            18 // ok
+#define OUT_SERVO           15 // ok
 #define IN_BTN              34
 #define OUT_BTN             35
-#define BUZZER               4
-#define EMERGENCY            5
 #define MSG_BUFFER_SIZE     50
 #define WAIT_TIME          500
 #define TIME_TO_SEND      2000
 
-bool emergency_btn = 0;
 
 bool state_in_btn = 0, previous_in_btn = 0;
 bool state_out_btn = 0, previous_out_btn = 0;
@@ -56,8 +51,8 @@ PubSubClient client(espClient);
 char msg[MSG_BUFFER_SIZE];
 
 // wifi e senha da rede local
-const char* ssid = "Wokwi-GUEST";
-const char* password = "";
+const char* ssid = "Cidrao family2g"; //Connectify-arthur
+const char* password = "07021970"; //12345678a
 
 
 
@@ -94,12 +89,11 @@ void callback(char* topic, byte* payload, unsigned int lenght) {
   if ((char)payload[0] == 'e') {
     //entrou um carro
     
-    if (servoInDown){
-      cars_in++;
-      servo_in.write(0);
-      delay(500);
-      servo_in.write(90);
-    }
+    cars_in++;
+    servo_in.write(0);
+    delay(500);
+    servo_in.write(90);
+    
 
     sprintf(msg, "%i", cars_in);
     client.publish("/estacionamento/dentro", msg);
@@ -107,7 +101,7 @@ void callback(char* topic, byte* payload, unsigned int lenght) {
 
   if ((char)payload[0] == 's') {
     //saiu um carro
-    if (servoOutDown && cars_in > 0){
+    if (cars_in > 0){
       cars_in--;
       count_out++;
       servo_out.write(0);
@@ -121,28 +115,6 @@ void callback(char* topic, byte* payload, unsigned int lenght) {
     sprintf(msg, "%.2f",count_out*10.0);
     client.publish("/estacionamento/dinheiro", msg);
   }
-
-  if ((char)payload[0] == 'a') {
-    //botão de emergência
-    count_emergency++;
-    if (count_emergency%2 == 0){
-      lcd.setCursor(0, 3);
-      lcd.print("         ");
-      client.publish("/estacionamento/emergencia", "");
-      noTone(BUZZER);
-      servo_in.write(0);
-      servo_out.write(0);
-      count_emergency = 0;
-    }
-    else{
-      tone(BUZZER, 220);
-      lcd.setCursor(0, 3);
-      lcd.print("EMERGENCY");
-      client.publish("/estacionamento/emergencia", "EMERGÊNCIA");
-      servo_in.write(0);
-      servo_out.write(0);
-    }
-  }
   
 }
 
@@ -151,23 +123,11 @@ void callback(char* topic, byte* payload, unsigned int lenght) {
 void setup() {
   Serial.begin(115200);
 
-  Serial.print("Conectando-se ao Wi-Fi");
-  WiFi.begin(ssid, password, 6);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(100);
-    Serial.print(".");
-  }
-  Serial.println(" Conectado!");
-
   lcd.init();
   lcd.backlight();
 
-  pinMode(BUZZER, OUTPUT);
-
-  pinMode(PIN_TRIG_R, OUTPUT);
-  pinMode(PIN_ECHO_R, INPUT);
-  pinMode(PIN_TRIG_L, OUTPUT);
-  pinMode(PIN_ECHO_L, INPUT);
+  pinMode(LIGHT_SENSOR_L, INPUT);
+  pinMode(LIGHT_SENSOR_R, INPUT);
 
   pinMode(LEDG_RIGHT, OUTPUT);
   pinMode(LEDR_RIGHT, OUTPUT);
@@ -180,6 +140,14 @@ void setup() {
   servo_in.write(90);
   servo_out.write(90);
 
+  Serial.print("Conectando-se ao Wi-Fi");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(100);
+    Serial.print(".");
+  }
+  Serial.println(" Conectado!");
+
   conectarBroker();
 
 }
@@ -189,115 +157,35 @@ void setup() {
 void loop() {
   reconectarBroker();
 
-  if (millis() - startTime >= WAIT_TIME){
-    servo_in.write(90);
-    servoInDown = true;
-    previous_in_btn = state_in_btn;
+  count = sensor(LIGHT_SENSOR_L, LEDR_LEFT, LEDG_LEFT) + 
+  sensor(LIGHT_SENSOR_R, LEDR_RIGHT, LEDG_RIGHT);
+
+  if (millis() > auxTimer + TIME_TO_SEND){
+    auxTimer = millis();
+    sprintf(msg, "%i", count);   //monta string
+    client.publish("/estacionamento/vagas", msg);   //publica a mensagem
   }
 
-  emergency_btn = digitalRead(EMERGENCY);
-
-  if (emergency_btn){
-    tone(BUZZER, 220);
-    lcd.setCursor(0, 3);
-    lcd.print("EMERGENCY");
-    delay(10);
-    noTone(BUZZER);
-    client.publish("/estacionamento/emergencia", "EMERGÊNCIA");
-    servo_in.write(0);
-    servo_out.write(0);
-  }
-
-  else{
-    client.publish("/estacionamento/emergencia", "");
-    lcd.setCursor(0, 3);
-    lcd.print("         ");
-    
-    state_in_btn = digitalRead(IN_BTN);
-    state_out_btn = digitalRead(OUT_BTN);
-
-    if (state_in_btn != previous_in_btn){
-      getInCar();
-
-      sprintf(msg, "%i", cars_in);
-      client.publish("/estacionamento/dentro", msg);
-    }
-
-    if (state_out_btn != previous_out_btn){
-      getOutCar();
-
-      sprintf(msg, "%i", cars_in);
-      client.publish("/estacionamento/dentro", msg);
-
-      sprintf(msg, "%.2f",count_out*10.0);
-      client.publish("/estacionamento/dinheiro", msg);
-    }
-
-    count = ultrasonic(PIN_TRIG_R, PIN_ECHO_R, LEDR_RIGHT, LEDG_RIGHT) + 
-    ultrasonic(PIN_TRIG_L, PIN_ECHO_L, LEDR_LEFT, LEDG_LEFT);
-
-    if (millis() > auxTimer + TIME_TO_SEND){
-      auxTimer = millis();
-      sprintf(msg, "%i", count);   //monta string
-      client.publish("/estacionamento/vagas", msg);   //publica a mensagem
-    }
-
-    updateLCD();
-  }
+  updateLCD();
+  
 }
 
 
 
-inline int ultrasonic(int trig, int echo, int red, int green){
-  digitalWrite(trig, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(trig, LOW);
-  
-  int distance = (pulseIn(echo,HIGH))/58.8;
-
-  if (distance < 250){
+int sensor(int light_sensor, int red, int green){
+  //Serial.println(analogRead(light_sensor));
+  if (analogRead(light_sensor) > 600){
     digitalWrite(red,HIGH);
     digitalWrite(green, LOW);
     return 0;
   }
-  else {
+  else{
     digitalWrite(red,LOW);
     digitalWrite(green, HIGH);
     return 1;
   }
+  
 
-}
-
-inline void getInCar(){
-  if (servoInDown){
-    cars_in++;
-    startTime = millis();
-    servoInDown = false;
-    servo_in.write(0);
-  }
-
-  if (millis() - startTime >= WAIT_TIME){
-    servo_in.write(90);
-    servoInDown = true;
-    previous_in_btn = state_in_btn;
-  }
-}
-
-
-inline void getOutCar(){
-  if (servoOutDown && cars_in > 0){
-    cars_in--;
-    count_out++;
-    endTime = millis();
-    servoOutDown = false;
-    servo_out.write(0);
-  }
-    
-  if (millis() - endTime >= WAIT_TIME){
-    servo_out.write(90);
-    servoOutDown = true;
-    previous_out_btn = state_out_btn;
-  }
 }
 
 
