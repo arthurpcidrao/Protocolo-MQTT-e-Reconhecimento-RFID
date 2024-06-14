@@ -12,6 +12,7 @@
 #define buzzer 4
 #define SS_PIN 5
 #define RST_PIN 15
+#define MSG_BUFFER_SIZE     50
 
 Preferences preferences;
 #define MAX_STRING 10
@@ -25,10 +26,11 @@ String identifier[MAX_STRING] = {"", "", "", "", "", "", "", "", "", ""};
 
 const char* ssid = "Connectify-arthur";
 const char* password = "12345678a";
-const char* mqtt_server = "/";
+const char* mqtt_server = "test.mosquitto.org";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
+char msg[MSG_BUFFER_SIZE];
 
 void setup() {
   setup_wifi();
@@ -121,6 +123,9 @@ void loop() {
         digitalWrite(LedVerde, LOW);
         lcd.clear();
         count = 0;
+        cars_in++;
+        sprintf(msg, "%i", cars_in);
+        client.publish("/estacionamento/dentro", msg);
         break;
     } else {
       count++;

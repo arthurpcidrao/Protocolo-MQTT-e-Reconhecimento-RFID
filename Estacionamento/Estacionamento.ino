@@ -51,8 +51,8 @@ PubSubClient client(espClient);
 char msg[MSG_BUFFER_SIZE];
 
 // wifi e senha da rede local
-const char* ssid = "Cidrao family2g"; //Connectify-arthur
-const char* password = "07021970"; //12345678a
+const char* ssid = "Connectify-arthur"; //Connectify-arthur
+const char* password = "12345678a"; //12345678a
 
 
 
@@ -111,6 +111,7 @@ void callback(char* topic, byte* payload, unsigned int lenght) {
 
     sprintf(msg, "%i", cars_in);
     client.publish("/estacionamento/dentro", msg);
+    
 
     sprintf(msg, "%.2f",count_out*10.0);
     client.publish("/estacionamento/dinheiro", msg);
